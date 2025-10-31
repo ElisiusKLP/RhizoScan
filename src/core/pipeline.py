@@ -4,6 +4,13 @@ Main pipeline script that processes data from a single file to end.
 from dataclasses import dataclass
 from pathlib import Path
 
+@dataclass
+class PipelineContext:
+    output_dir: Path
+    sub_id: str
+    plot_counter: int = 0
+    file_counter: int = 0
+
 class Pipeline:
     def __init__(self, name, context=None):
         self.name = name
@@ -16,6 +23,9 @@ class Pipeline:
 
     def run(self, data=None):
         """The pipeline loops over each step."""
+        self.context["plot_counter"] = 0 # reset plot counter
+        self.context["file_counter"] = 0 # reset plot counter
+
         current_data = data
         for step in self.steps:
             if not step.active and step.required:
@@ -30,9 +40,3 @@ class Pipeline:
             
             current_data = step.run(current_data)
         return current_data
-
-@dataclass
-class PipelineContext:
-    output_dir: Path
-    sub_id: str
-    plot_counter: int = 0

@@ -10,3 +10,7 @@ __pycache__/
 # Ignore data or logs (folders)
 data/
 logs/
+
+# Ignore all MNE FIF data files
+*.fif
+*.fif.gz

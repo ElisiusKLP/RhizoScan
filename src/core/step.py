@@ -17,7 +17,7 @@ class Step:
     def set_context(self, context):
         self.context = context
 
-    def connect(self, next_step: Step) -> Step:
+    def connect(self, next_step: "Step") -> "Step":
         """Connect current step's output to another step."""
         self.next_steps.append(next_step)
         return next_step
