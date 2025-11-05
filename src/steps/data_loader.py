@@ -7,6 +7,12 @@ from src.core.step_types import DataProcStep
 
 class loadRaw(DataProcStep):
     def __init__(self, filepath: Path):
+        """
+        Loads Raw mne files in a catch-all manner.
+
+        Args:
+            filepath (Path): path to a mne.BaseRaw object.
+        """
         super().__init__("loadRaw")
         self.filepath = filepath
 

@@ -5,7 +5,7 @@ Premade pipeline for effort learning.
 from pathlib import Path
 from src.core.pipeline import Pipeline, PipelineContext
 from src.steps.data_loader import loadRaw
-from src.steps.data_preproc import crop_data, Filter
+from src.steps.data_preproc import crop_data, Filter, set_channels
 from src.core.step_types import data_proc_step
 
 def create_effort_pipe():
@@ -24,11 +24,17 @@ def create_effort_pipe():
         context=context
     )
     pipe.add_step(loadRaw(raw_path))
+    pipe.add_step(set_channels(ch_dict={
+            "UDIO001":"stim",
+            "UADC009":"stim",
+            "UADC010":"stim"
+        }))
     pipe.add_step(crop_data())
     @data_proc_step(name="pick_meg_stim", save=False)
     def pick_channels(data):
         return data.pick(picks=["meg", "stim", "grad", "misc"], exclude=["eeg"])
     pipe.add_step(pick_channels(save=True))
+    
 
     return pipe
 
