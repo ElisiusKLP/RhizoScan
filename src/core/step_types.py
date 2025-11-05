@@ -1,3 +1,9 @@
+"""
+These are the different types of steps we can create.
+They each have slightly different attrbutes in their required arguments.
+"""
+from functools import wraps
+from typing import Callable, Any
 from pathlib import Path
 import warnings
 from src.core.step import Step
@@ -23,8 +29,8 @@ class DataProcStep(Step):
             files_sub_dir.mkdir(parents=True, exist_ok=True)
 
             # Use counter for sequential mapping
-            counter = self.context.get("file_counter", 0)
-            filename = f"{self.context['sub_id']}_{counter:02d}_{self.name}.fif"
+            counter = self.context.file_counter
+            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.fif"
             filepath = files_sub_dir / filename
 
             # Check type and save appropriately
@@ -40,7 +46,7 @@ class DataProcStep(Step):
                 return data  # gracefully exit, no save
 
             # Increment counter in context
-            self.context["file_counter"] = counter + 1
+            self.context.file_counter = counter + 1
 
         return data
 
@@ -65,20 +71,20 @@ class PlotStep(Step):
 
         if self.save and self.context is not None:
             # create output dir
-            out_dir = Path(self.context["output_dir"])
+            out_dir = Path(self.context.output_dir)
             out_dir.mkdir(parents=True, exist_ok=True)
             # create plot sub dir
             plot_sub_dir = out_dir / "plots"
             plot_sub_dir.mkdir(parents=True, exist_ok=True)
             # Use counter for sequential naming
-            counter = self.context.get("plot_counter", 0)
-            filename = f"{self.context["sub_id"]}_{counter:02d}_{self.name}.png"
+            counter = self.context.plot_counter
+            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.png"
             filepath = out_dir / filename
             fig.savefig(filename)
             print(f"Saved plot to {filename}")
 
             # Increment counter in context
-            self.context["plot_counter"] = counter + 1
+            self.context.plot_counter = counter + 1
 
         if self.show:
             fig.show()
@@ -87,3 +93,53 @@ class PlotStep(Step):
 
     def plot(self, data):
         raise NotImplementedError("PlotStep must implement plot()")
+
+
+# -- DECORATOR WRAPPERS (for increased usability)
+def data_proc_step(name: str, save: bool = False):
+    """Decorator to convert a function into a DataProcStep."""
+    def decorator(func: Callable[..., Any]):  # Allow any number of parameters
+        @wraps(func)
+        def step_factory(*args, **kwargs):
+            # Create the actual step class
+            class FunctionStep(DataProcStep):
+                def __init__(self, func_args=None, func_kwargs=None):
+                    super().__init__(name=name, save=save)
+                    self.func = func
+                    self.func_args = func_args or ()
+                    self.func_kwargs = func_kwargs or {}
+                
+                def proc(self, data):
+                    print(f"Running {name}")
+                    # Call the original function with stored arguments + data as first param
+                    return self.func(data, *self.func_args, **self.func_kwargs)
+            
+            # Return an instance of the step with the current arguments
+            return FunctionStep(args, kwargs)
+        
+        return step_factory
+    return decorator
+
+def plot_step(name: str, save: bool = False, show: bool = False):
+    """Decorator to convert a function into a PlotStep."""
+    def decorator(func: Callable[..., Any]):  # Allow any number of parameters
+        @wraps(func)
+        def step_factory(*args, **kwargs):
+            # Create the actual step class
+        # This creates a NEW class that INHERITS from PlotStep
+            class FunctionPlotStep(PlotStep):
+                def __init__(self, func_args=None, func_kwargs=None):
+                    super().__init__(name=name, save=save, show=show)
+                    self.func = func
+                    self.func_args = func_args or ()
+                    self.func_kwargs = func_kwargs or {}
+            
+                def plot(self, data):
+                    print(f"Plotting {name}")
+                    return self.func(data, *self.func_args, **self.func_kwargs)
+                
+            # Return an instance of the step with the current arguments
+            return FunctionPlotStep(args, kwargs)
+        
+        return step_factory
+    return decorator
