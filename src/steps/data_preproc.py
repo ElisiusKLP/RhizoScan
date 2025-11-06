@@ -16,7 +16,9 @@ from mne import io, Epochs, Evoked, find_events, set_log_level, pick_types
 from mne.io import BaseRaw, RawArray
 #internal
 from src.core.step_types import DataProcStep, data_proc_step
-
+#logging
+import logging
+logger = logging.getLogger(__name__)
 
 @data_proc_step(name="Crop", save=True)
 def crop_data(
@@ -178,7 +180,7 @@ def apply_zapline_denoising(
 
     # Recombine
     cleaned_data_mag = np.hstack(cleaned_chunks)
-    print(f"cleaned_data_mag {cleaned_data_mag[0:20]}")
+    logger.debug(f"cleaned_data_mag {cleaned_data_mag[0:20]}")
 
     # Reconstruct full data
     new_data: np.ndarray = raw.get_data()
@@ -227,7 +229,7 @@ def run_ica_and_save(
     ica = ICA(n_components=n_components, method=method, random_state=random_state)
     ica.fit(raw_copy)
     ica.save(ica_fpath, overwrite=True)
-    print(f"saved ica to {ica_fpath}")
+    logger.info(f"saved ica to {ica_fpath}")
 
     # Return original raw
     return data

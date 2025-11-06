@@ -14,6 +14,9 @@ from src.steps.data_preproc import (
     run_ica_and_save
 )
 from src.steps.plots import plot_psd
+#logging
+import logging
+logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:%(name)s:%(message)s")
     
 
 def create_effort_pipe():

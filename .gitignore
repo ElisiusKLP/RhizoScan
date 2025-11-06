@@ -12,6 +12,7 @@ data/
 logs/
 src/test_data/
 src/tests/test_files
+output/
 
 # Ignore all MNE FIF data files
 *.fif
