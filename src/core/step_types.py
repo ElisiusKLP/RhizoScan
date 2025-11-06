@@ -19,8 +19,8 @@ class DataProcStep(Step):
         self.active = active
         self.save = save
 
-
     def run(self, data):
+        # run a data processing step
         if not self.active:
             print(f"[{self.name}] skipped (inactive)")
             return data
@@ -105,46 +105,60 @@ class PlotStep(Step):
 
 
 # -- DECORATOR WRAPPERS (for increased usability)
-def data_proc_step(name: str, save: bool = False):
+def data_proc_step(name: str, save: bool = False, active: bool = True):
     """Decorator to convert a function into a DataProcStep."""
     def decorator(func: Callable[..., Any]):  # Allow any number of parameters
-        @wraps(func)
-        def step_factory(*args, **kwargs):
+        @wraps(func) # wraps the function
+        def step_factory(*args, save=save, active=active, **kwargs):
             # Create the actual step class
             class FunctionStep(DataProcStep):
-                def __init__(self, func_args=None, func_kwargs=None):
-                    super().__init__(name=name, save=save)
+                def __init__(self, func_args=None, func_kwargs=None, save=save, active=active):
+                    # initializes DataProcStep with the arguments such that proc() runs the wraped func
+                    super().__init__(name=name, save=save, active=active)
                     self.func = func
                     self.func_args = func_args or ()
                     self.func_kwargs = func_kwargs or {}
                 
                 def proc(self, data):
                     print(f"Running {name}")
+
+                    # Get the function signature
+                    sig = signature(self.func)
+                    
+                    # Prepare kwargs to pass to the function
+                    call_kwargs = dict(self.func_kwargs)
+                    
+                    # If the function accepts 'context', inject self.context
+                    if 'context' in sig.parameters:
+                        call_kwargs['context'] = self.context  # <-- this is the magic!
+                    
+                    return self.func(data, *self.func_args, **call_kwargs)
+
                     # Call the original function with stored arguments + data as first param
                     return self.func(data, *self.func_args, **self.func_kwargs)
             
             # Return an instance of the step with the current arguments
-            return FunctionStep(args, kwargs)
+            return FunctionStep(args, kwargs, save=save, active=active)
         
         return step_factory
     return decorator
 
-def plot_step(name: str, save: bool = False, show: bool = False):
+def plot_step(name: str, save: bool = True, show: bool = False, active: bool = True):
     """Decorator to convert a function into a PlotStep."""
     def decorator(func: Callable[..., Any]):  # Allow any number of parameters
         @wraps(func)
-        def step_factory(*args, **kwargs):
+        def step_factory(*args, save=save, show=show, active=active, **kwargs):
             # Create the actual step class
         # This creates a NEW class that INHERITS from PlotStep
             class FunctionPlotStep(PlotStep):
-                def __init__(self, func_args=None, func_kwargs=None):
-                    super().__init__(name=name, save=save, show=show)
+                def __init__(self, func_args=None, func_kwargs=None, save=save, show=show, active=active):
+                    super().__init__(name=name, save=save, show=show, active=active)
                     self.func = func
                     self.func_args = func_args or ()
                     self.func_kwargs = func_kwargs or {}
             
                 def plot(self, data):
-                    print(f"Plotting {name}")
+                    print(f"Plotting {self.name}")
                     
                     # Get the function signature
                     sig = signature(self.func)
@@ -159,7 +173,7 @@ def plot_step(name: str, save: bool = False, show: bool = False):
                     return self.func(data, *self.func_args, **call_kwargs)
                 
             # Return an instance of the step with the current arguments
-            return FunctionPlotStep(args, kwargs)
+            return FunctionPlotStep(args, kwargs, save=save, show=show, active=active)
         
         return step_factory
     return decorator

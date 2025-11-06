@@ -92,7 +92,15 @@ def set_channels(data, ch_dict: dict):
     # Check if channels exist before attempting to set types
     invalid_channels = set(ch_dict.keys()) - set(data.ch_names)
     if invalid_channels:
-        raise ValueError(f"Channels do not exist: {invalid_channels}")
+        ValueError(f"Channels do not exist: {invalid_channels}")
+
+        print("Here are the avaliable channel types:")
+        print(print(set(data.get_channel_types())))
+        print("Looking for existing stim channels...")
+        stim_ch_names = [ch for ch, ch_type in zip(data.ch_names, data.get_channel_types()) if ch_type == 'stim']
+        print(stim_ch_names)
+
+        raise
 
     try:
         raw = data.set_channel_types(ch_dict)
@@ -207,6 +215,8 @@ def run_ica_and_save(
     filt_high: float = 30.0,
     method: str = "fastica",
     random_state: int = 42,
+    *,
+    context=None
 ) -> BaseRaw:
     """
     Run ICA and save to disk, returning the filtered Raw object.
@@ -214,7 +224,6 @@ def run_ica_and_save(
 
     Args:
         data (Raw): Input data.
-        ica_fpath (Path): Where to save the ICA (.fif).
         filt_low (float or None): Low cutoff for bandpass filter (Hz). If None, skip.
         filt_high (float or None): High cutoff for bandpass filter (Hz). If None, skip.
         method (str): ICA algorithm (e.g., "fastica", "picard").
@@ -228,9 +237,15 @@ def run_ica_and_save(
 
     ica = ICA(n_components=n_components, method=method, random_state=random_state)
     ica.fit(raw_copy)
+    if not isinstance(context.output_dir, Path):
+        raise TypeError(f"context.out_dir is not Path type: {type(context.output_dir)}")
+    ica_dir = context.output_dir / "ica"
+    ica_dir.mkdir(parents=True, exist_ok=True)
+    ica_fname = f"{context.sub_id}-ica.fif"
+    ica_fpath = ica_dir / ica_fname
     ica.save(ica_fpath, overwrite=True)
     logger.info(f"saved ica to {ica_fpath}")
-
+    
     # Return original raw
     return data
 

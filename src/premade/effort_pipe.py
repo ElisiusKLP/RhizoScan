@@ -35,12 +35,14 @@ def create_effort_pipe():
         context=context
     )
     pipe.add_step(loadRaw(raw_path))
+    """# I wait for the real data
     pipe.add_step(set_channels(ch_dict={
             "UDIO001":"stim",
             "UADC009":"stim",
             "UADC010":"stim"
         }))
-    pipe.add_step(crop_data())
+    """
+    #pipe.add_step(crop_data(stim_channel='STI101')) # already cropped test_data
     @data_proc_step(name="pick_meg_stim", save=False)
     def pick_channels(data):
         return data.pick(picks=["meg", "stim", "grad", "misc"], exclude=["eeg"])
@@ -48,7 +50,7 @@ def create_effort_pipe():
     @data_proc_step(name="grad_comp", save=False)
     def grad_comp(data):
         return data.apply_gradient_compensation(3)
-    pipe.add_step(grad_comp())
+    #pipe.add_step(grad_comp(active=False))
     pipe.add_step(plot_psd(fmin=0, fmax=120, n_fft=2048))
     pipe.add_step(apply_zapline_denoising(
         fline=50.0,
@@ -64,7 +66,7 @@ def create_effort_pipe():
         n_components=20,
         filt_low=1,
         filt_high=30,
-        ))
+        save=True))
 
     return pipe
 

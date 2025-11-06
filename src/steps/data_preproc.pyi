@@ -8,7 +8,7 @@ from src.core.step_types import DataProcStep  # ← adjust if DataProcStep is el
 
 def set_channels(ch_dict: Dict[str, str], *, save: bool = False) -> DataProcStep: ...
 
-def crop_data(tmin: float = 0.0, tmax: Optional[float] = None, *, save: bool = False) -> DataProcStep: ...
+def crop_data(stim_channel: str, tmin: float = 0.0, tmax: Optional[float] = None, *, save: bool = False) -> DataProcStep: ...
 
 def Filter(
         l_freq: Optional[float] = None, 
@@ -25,6 +25,8 @@ def apply_zapline_denoising(
     nfft: int = 2048,
     n_iter_max: int = 30,
     mag_only: bool = True,
+    *,
+    save: bool = False
 ) -> DataProcStep: ...
     
 def run_ica_and_save(
@@ -34,4 +36,6 @@ def run_ica_and_save(
     filt_high: float = 30.0,
     method: str = "fastica",
     random_state: int = 42,
+    *,
+    save: bool = False
 ) -> DataProcStep: ...
