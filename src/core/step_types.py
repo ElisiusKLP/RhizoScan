@@ -1,8 +1,10 @@
+# src/core/step_types.py
 """
 These are the different types of steps we can create.
 They each have slightly different attrbutes in their required arguments.
 """
 from functools import wraps
+from inspect import signature
 from typing import Callable, Any
 from pathlib import Path
 import warnings
@@ -19,6 +21,12 @@ class DataProcStep(Step):
 
 
     def run(self, data):
+        if not self.active:
+            print(f"[{self.name}] skipped (inactive)")
+            return data
+        
+        data = self.proc(data)
+
         if self.save and self.context is not None:
             # Create output dir
             out_dir = Path(self.context["output_dir"])
@@ -68,10 +76,11 @@ class PlotStep(Step):
             return data
         
         fig = self.plot(data)
+        assert fig is not None, "fig is not returned from PlotStep plot() implementation"
 
         if self.save and self.context is not None:
             # create output dir
-            out_dir = Path(self.context.output_dir)
+            out_dir = self.context.output_dir
             out_dir.mkdir(parents=True, exist_ok=True)
             # create plot sub dir
             plot_sub_dir = out_dir / "plots"
@@ -79,9 +88,9 @@ class PlotStep(Step):
             # Use counter for sequential naming
             counter = self.context.plot_counter
             filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.png"
-            filepath = out_dir / filename
-            fig.savefig(filename)
-            print(f"Saved plot to {filename}")
+            filepath = plot_sub_dir / filename
+            fig.savefig(filepath)
+            print(f"Saved plot to {filepath}")
 
             # Increment counter in context
             self.context.plot_counter = counter + 1
@@ -136,7 +145,18 @@ def plot_step(name: str, save: bool = False, show: bool = False):
             
                 def plot(self, data):
                     print(f"Plotting {name}")
-                    return self.func(data, *self.func_args, **self.func_kwargs)
+                    
+                    # Get the function signature
+                    sig = signature(self.func)
+                    
+                    # Prepare kwargs to pass to the function
+                    call_kwargs = dict(self.func_kwargs)
+                    
+                    # If the function accepts 'context', inject self.context
+                    if 'context' in sig.parameters:
+                        call_kwargs['context'] = self.context  # <-- this is the magic!
+                    
+                    return self.func(data, *self.func_args, **call_kwargs)
                 
             # Return an instance of the step with the current arguments
             return FunctionPlotStep(args, kwargs)

@@ -1,15 +1,19 @@
+# src/steps/data_preproc.py
 """
 Implementations of "data preprocessing steps".
 
 Returns:
     data
 """
+from pathlib import Path
 import numpy as np
 import mne
-from
+from mne.preprocessing import ICA
+from mne.time_frequency import psd_array_welch
+from meegkit.dss import dss_line_iter
 #typing
 from mne import io, Epochs, Evoked, find_events, set_log_level, pick_types
-from mne.io import BaseRaw
+from mne.io import BaseRaw, RawArray
 #internal
 from src.core.step_types import DataProcStep, data_proc_step
 
@@ -90,9 +94,12 @@ def set_channels(data, ch_dict: dict):
 
     try:
         raw = data.set_channel_types(ch_dict)
+        
     except (TypeError, ValueError) as e:
         raise ValueError("Trying to set inappropriate channel types, or channels do not exist") from e
     
+    return raw
+
 @data_proc_step(name="zapline_denoise", save=False)
 def apply_zapline_denoising(
     data: BaseRaw,
@@ -106,8 +113,11 @@ def apply_zapline_denoising(
 ) -> BaseRaw:
     """
     Apply ZAPLINE iterative line noise removal to MEG data using meegkit.dss.dss_line_iter.
+    Chunks data into n_chunks for computational efficiency.
 
     Operates only on magnetometer channels by default for efficiency and safety.
+    Defaults to mag_only as gradiometer power noise act differently in frequencies.
+
 
     Args:
         data (Raw): MNE Raw object (must be preloaded).
@@ -123,11 +133,16 @@ def apply_zapline_denoising(
         Raw: Copy of input with ZAPLINE-applied data.
     """
     raw = data.copy().load_data()  # Ensure preloaded
-    raw_data = raw.get_data()
+    info = raw.info
+    raw_data: np.ndarray = raw.get_data()
 
     # Identify magnetometer channels
+    
     if mag_only:
-        mag_ix = np.array([i for i, ch_type in enumerate(raw.get_channel_types()) if ch_type == "mag"])
+        mag_ix = np.array([
+            i for i, ch_type in enumerate(raw.get_channel_types()) 
+            if ch_type == "mag"
+        ])
         if len(mag_ix) == 0:
             raise ValueError("No magnetometer channels found for ZAPLINE denoising.")
         data_to_denoise = raw_data[mag_ix]
@@ -136,6 +151,7 @@ def apply_zapline_denoising(
         data_to_denoise = raw_data
         mag_ix = np.arange(data_to_denoise.shape[0])
         ch_names = raw.ch_names
+
 
     sfreq = raw.info["sfreq"]
     n_channels, n_samples = data_to_denoise.shape
@@ -162,16 +178,57 @@ def apply_zapline_denoising(
 
     # Recombine
     cleaned_data_mag = np.hstack(cleaned_chunks)
+    print(f"cleaned_data_mag {cleaned_data_mag[0:20]}")
 
     # Reconstruct full data
-    new_data = raw.get_data()
+    new_data: np.ndarray = raw.get_data()
     if mag_only:
         new_data[mag_ix, :] = cleaned_data_mag
     else:
         new_data = cleaned_data_mag
 
     # Create new Raw object with cleaned data
-    new_raw = raw.copy()
-    new_raw._data = new_data  # Safe because we copied
+    new_raw = RawArray(
+        new_data,
+        info,
+        first_samp=raw.first_samp
+    )
 
     return new_raw
+
+@data_proc_step(name="run_ica_side_effect", save=False)
+def run_ica_and_save(
+    data: BaseRaw,
+    ica_fpath: Path,
+    n_components: int = 20,
+    filt_low: float = 1.0,
+    filt_high: float = 30.0,
+    method: str = "fastica",
+    random_state: int = 42,
+) -> BaseRaw:
+    """
+    Run ICA and save to disk, returning the filtered Raw object.
+    Useful when pipeline must return Raw.
+
+    Args:
+        data (Raw): Input data.
+        ica_fpath (Path): Where to save the ICA (.fif).
+        filt_low (float or None): Low cutoff for bandpass filter (Hz). If None, skip.
+        filt_high (float or None): High cutoff for bandpass filter (Hz). If None, skip.
+        method (str): ICA algorithm (e.g., "fastica", "picard").
+        random_state (int): For reproducibility.
+
+    Returns:
+        Raw: Bandpass-filtered copy of input (used for ICA fitting).
+    """
+    raw_copy = data.copy().load_data()
+    raw_copy.filter(filt_low, filt_high, verbose=False, n_jobs=1)
+
+    ica = ICA(n_components=n_components, method=method, random_state=random_state)
+    ica.fit(raw_copy)
+    ica.save(ica_fpath, overwrite=True)
+    print(f"saved ica to {ica_fpath}")
+
+    # Return original raw
+    return data
+

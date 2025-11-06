@@ -1,3 +1,4 @@
+# src/core/pipeline.py
 """
 Main pipeline script that processes data from a single file to end.
 """
@@ -51,7 +52,7 @@ class Pipeline:
             self.context.output_dir = Path(self.context.output_dir)
 
         current_data = data
-        for step in self.steps:
+        for i, step in enumerate(self.steps):
             if not step.active and step.required:
                 raise RuntimeError(f"Required step '{step.name}' is inactive!")
             if not step.active:
@@ -62,6 +63,7 @@ class Pipeline:
             if hasattr(step, "set_context"):
                 step.set_context(self.context)
             
+            print(f"*Step {i}: {step.name} ...")
             current_data = step.run(current_data)
         return current_data
     
