@@ -1,12 +1,65 @@
+# src/core/step_types.py
+"""
+These are the different types of steps we can create.
+They each have slightly different attrbutes in their required arguments.
+"""
+from functools import wraps
+from inspect import signature
+from typing import Callable, Any
 from pathlib import Path
+import warnings
 from src.core.step import Step
+from mne.io import BaseRaw
+from mne import Epochs, Evoked
 
 class DataProcStep(Step):
     """Mandatory step that processes data and passes it forward."""
-    def __init__(self, name, active=True):
+    def __init__(self, name, active=True, save=False):
         super().__init__(name, active=active, required=True)
+        self.active = active
+        self.save = save
+
 
     def run(self, data):
+        if not self.active:
+            print(f"[{self.name}] skipped (inactive)")
+            return data
+        
+        data = self.proc(data)
+
+        if self.save and self.context is not None:
+            # Create output dir
+            out_dir = Path(self.context["output_dir"])
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create subdirectory for files (optional)
+            files_sub_dir = out_dir / "files"
+            files_sub_dir.mkdir(parents=True, exist_ok=True)
+
+            # Use counter for sequential mapping
+            counter = self.context.file_counter
+            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.fif"
+            filepath = files_sub_dir / filename
+
+            # Check type and save appropriately
+            if isinstance(data, (BaseRaw, Epochs, Evoked)):
+                data.save(filepath, overwrite=True)
+                print(f"Saved MNE object to {filepath}")
+            else:
+                warnings.warn(
+                    f"[{self.name}] Could not save {filename}: "
+                    f"invalid data type {type(data).__name__}.",
+                    UserWarning
+                )
+                return data  # gracefully exit, no save
+
+            # Increment counter in context
+            self.context.file_counter = counter + 1
+
+        return data
+
+
+    def proc(self, data):
         raise NotImplementedError("DataProcStep must implement run()")
 
 
@@ -23,16 +76,24 @@ class PlotStep(Step):
             return data
         
         fig = self.plot(data)
+        assert fig is not None, "fig is not returned from PlotStep plot() implementation"
 
         if self.save and self.context is not None:
-            out_dir = Path(self.context["output_dir"])
+            # create output dir
+            out_dir = self.context.output_dir
             out_dir.mkdir(parents=True, exist_ok=True)
+            # create plot sub dir
+            plot_sub_dir = out_dir / "plots"
+            plot_sub_dir.mkdir(parents=True, exist_ok=True)
             # Use counter for sequential naming
-            counter = self.context.get("plot_counter", 0)
-            filename = f"{self.context["sub_id"]}_{counter:02d}_{self.name}.png"
-            filepath = out_dir / filename
-            fig.savefig(filename)
-            print(f"Saved plot to {filename}")
+            counter = self.context.plot_counter
+            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.png"
+            filepath = plot_sub_dir / filename
+            fig.savefig(filepath)
+            print(f"Saved plot to {filepath}")
+
+            # Increment counter in context
+            self.context.plot_counter = counter + 1
 
         if self.show:
             fig.show()
@@ -41,3 +102,64 @@ class PlotStep(Step):
 
     def plot(self, data):
         raise NotImplementedError("PlotStep must implement plot()")
+
+
+# -- DECORATOR WRAPPERS (for increased usability)
+def data_proc_step(name: str, save: bool = False):
+    """Decorator to convert a function into a DataProcStep."""
+    def decorator(func: Callable[..., Any]):  # Allow any number of parameters
+        @wraps(func)
+        def step_factory(*args, **kwargs):
+            # Create the actual step class
+            class FunctionStep(DataProcStep):
+                def __init__(self, func_args=None, func_kwargs=None):
+                    super().__init__(name=name, save=save)
+                    self.func = func
+                    self.func_args = func_args or ()
+                    self.func_kwargs = func_kwargs or {}
+                
+                def proc(self, data):
+                    print(f"Running {name}")
+                    # Call the original function with stored arguments + data as first param
+                    return self.func(data, *self.func_args, **self.func_kwargs)
+            
+            # Return an instance of the step with the current arguments
+            return FunctionStep(args, kwargs)
+        
+        return step_factory
+    return decorator
+
+def plot_step(name: str, save: bool = False, show: bool = False):
+    """Decorator to convert a function into a PlotStep."""
+    def decorator(func: Callable[..., Any]):  # Allow any number of parameters
+        @wraps(func)
+        def step_factory(*args, **kwargs):
+            # Create the actual step class
+        # This creates a NEW class that INHERITS from PlotStep
+            class FunctionPlotStep(PlotStep):
+                def __init__(self, func_args=None, func_kwargs=None):
+                    super().__init__(name=name, save=save, show=show)
+                    self.func = func
+                    self.func_args = func_args or ()
+                    self.func_kwargs = func_kwargs or {}
+            
+                def plot(self, data):
+                    print(f"Plotting {name}")
+                    
+                    # Get the function signature
+                    sig = signature(self.func)
+                    
+                    # Prepare kwargs to pass to the function
+                    call_kwargs = dict(self.func_kwargs)
+                    
+                    # If the function accepts 'context', inject self.context
+                    if 'context' in sig.parameters:
+                        call_kwargs['context'] = self.context  # <-- this is the magic!
+                    
+                    return self.func(data, *self.func_args, **call_kwargs)
+                
+            # Return an instance of the step with the current arguments
+            return FunctionPlotStep(args, kwargs)
+        
+        return step_factory
+    return decorator
