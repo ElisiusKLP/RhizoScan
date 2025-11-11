@@ -5,6 +5,7 @@ Main pipeline script that processes data from a single file to end.
 from dataclasses import dataclass, replace
 from pathlib import Path
 import os
+import re
 
 @dataclass
 class PipelineContext:
@@ -29,10 +30,15 @@ class PipelineContext:
         return replace(self)
 
 class Pipeline:
-    def __init__(self, name, context: PipelineContext):
+    def __init__(self, 
+                 name, 
+                 context: PipelineContext,
+                 auto_load: bool = False
+                 ):
         self.name = name
         self.steps = []
         self.context = context
+        self.auto_load = auto_load
 
 
     def add_step(self, step):
@@ -51,6 +57,39 @@ class Pipeline:
         if isinstance(self.context.output_dir, str):
             self.context.output_dir = Path(self.context.output_dir)
 
+        # Find the most recent file that matches any step name
+        most_recent_file = None
+        step_at_which_to_resume = None
+        
+        if self.auto_load:
+            files_dir = self.context.output_dir / "files"
+            if files_dir.exists():
+                files = list(files_dir.glob('*'))
+                # match and extract the fXY pattern (f followed by 2 digits)
+                f_pattern = re.compile(r'f(\d{2})')
+                max_num = -1
+                
+                for file_path in files:
+                    match = f_pattern.search(file_path.name)
+                    if match:
+                        num = int(match.group(1))
+                        # Check if this file matches any of the step names
+                        for j, step in enumerate(self.steps):
+                            if step.name.lower() in file_path.name.lower():
+                                if num > max_num:
+                                    max_num = num
+                                    most_recent_file = file_path
+                                    step_at_which_to_resume = j
+                                break  # Found a matching step, move to next file
+                
+                if max_num >= 0:
+                    self.context.file_counter = max_num + 1
+                    print(f"Found most recent file: {most_recent_file} for step at index {step_at_which_to_resume}")
+                else:
+                    self.context.file_counter = 0
+            else:
+                self.context.file_counter = 0
+
         current_data = data
         for i, step in enumerate(self.steps):
             if not step.active and step.required:
@@ -58,13 +97,48 @@ class Pipeline:
             if not step.active:
                 print(f"Skipping {step.name}")
                 continue
-            
-            # Inject context dynamically if the step supports it
-            if hasattr(step, "set_context"):
-                step.set_context(self.context)
-            
-            print(f"*Step {i}: {step.name} ...")
-            current_data = step.run(current_data)
+
+            # Check if we should resume from a saved file
+            if self.auto_load and most_recent_file and step_at_which_to_resume is not None:
+                if i == step_at_which_to_resume:
+                    # This is the step that matches the most recent file, load the data
+                    print(f"Auto-Loading most recent data from {most_recent_file} for step {step.name}")
+                    try:
+                        from src.steps.data_loader import loadRaw  # Adjust import path as needed
+                        raw_loader = loadRaw(most_recent_file)
+                        # Inject context if the loader supports it
+                        if hasattr(raw_loader, "set_context"):
+                            raw_loader.set_context(self.context)
+                        current_data = raw_loader.run()
+                    except ImportError:
+                        print(f"Could not import loadRaw step, running step normally")
+                        if hasattr(step, "set_context"):
+                            step.set_context(self.context)
+                        current_data = step.run(current_data)
+                    except Exception as e:
+                        print(f"Error loading data from {most_recent_file}: {e}")
+                        # Fall back to running the step normally
+                        if hasattr(step, "set_context"):
+                            step.set_context(self.context)
+                        current_data = step.run(current_data)
+                elif i < step_at_which_to_resume:
+                    # Skip steps that were already completed
+                    print(f"Skipping {step.name} (already completed based on saved file)")
+                    continue
+                else:
+                    # Run steps that come after the loaded step
+                    if hasattr(step, "set_context"):
+                        step.set_context(self.context)
+                    print(f"*Step {i}: {step.name} ...")
+                    current_data = step.run(current_data)
+            else:
+                # Normal execution when auto_load is not enabled or no matching file found
+                # Inject context dynamically if the step supports it
+                if hasattr(step, "set_context"):
+                    step.set_context(self.context)
+                
+                print(f"*Step {i}: {step.name} ...")
+                current_data = step.run(current_data)
         return current_data
     
     def copy(self):

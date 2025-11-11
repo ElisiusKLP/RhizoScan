@@ -2,7 +2,15 @@
 Plot implementation of the PlotStep function.
 """
 import mne
+import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import tkinter as tk
+from tkinter import messagebox
+import tempfile
+import os
+import cv2
+from PIL import Image
 from mne.time_frequency import psd_array_welch
 from mne.preprocessing import read_ica
 #typing
@@ -29,7 +37,7 @@ class PlotPSD(PlotStep):
         
         return fig
     
-@plot_step(name="PlotPSD", save=True, show=False)
+@plot_step(name="PlotPSD", save=False, show=False)
 def plot_psd(
     data: BaseRaw,
     fmin: int = 0,
@@ -60,34 +68,4 @@ def plot_psd(
         )
     
     return fig
-
-@plot_step(name="IcaCheck", save=True, show=False)
-def ica_check(
-    data: BaseRaw,
-    crop_min: int = 100,
-    crop_max: int = 300,
-    filter_min: int = 1,
-    filter_max: int = 20,
-    *,
-    context=None
-):
-    
-    # crop to reduce memory overhead for visualisation - filter in a artifact range
-    raw = data.crop(tmin=crop_min, tmax=crop_max).filter(filter_min, filter_max)
-    # setup ica_path
-    ica_path = context.output_dir / "ica" / f"{context.sub_id}-ica.fif"
-    ica = read_ica(ica_path)
-
-    # Displays ICA component topographies (ica.plot_components()) and time-series activations (ica.plot_sources()), 
-    # allowing the user to visually identify artifacts (e.g., eye blinks, heartbeats).
-    ica.plot_components()
-    ica.plot_sources(raw, block=True, theme="dark")
-
-    # TODO: Add an exclude components step step
-
-    new_ica = ica.copy()
-    new_ica_path = context.output_dir / "ica" / f"{context.sub_id}_clean-ica.fif"
-    new_ica.save(new_ica_path)
-
-    return data
 

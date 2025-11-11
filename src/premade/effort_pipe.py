@@ -11,12 +11,13 @@ from src.steps.data_preproc import (
     Filter, 
     set_channels, 
     apply_zapline_denoising,
-    run_ica_and_save
+    run_ica_and_save,
+    ica_check
 )
-from src.steps.plots import plot_psd, ica_check
+from src.steps.plots import plot_psd
 #logging
 import logging
-logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:%(name)s:%(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     
 
 def create_effort_pipe():
@@ -32,7 +33,8 @@ def create_effort_pipe():
     )
     pipe = Pipeline(
         name="effort",
-        context=context
+        context=context,
+        auto_load=True
     )
     # Steo 0
     pipe.add_step(loadRaw(raw_path))

@@ -248,3 +248,85 @@ def run_ica_and_save(
     # Return original raw
     return data
 
+@data_proc_step(name="IcaCheck", save=False)
+def ica_check(
+    data: BaseRaw,
+    crop_min: int = 100,
+    crop_max: int = 300,
+    filter_min: int = 1,
+    filter_max: int = 20,
+    *,
+    context=None
+):
+    
+    # crop to reduce memory overhead for visualisation - filter in a artifact range
+    raw = data.crop(tmin=crop_min, tmax=crop_max).filter(filter_min, filter_max)
+    # setup ica_path
+    ica_path = context.output_dir / "ica" / f"{context.sub_id}-ica.fif"
+    ica = read_ica(ica_path)
+
+    temp_path = context.output_dir / "ica_check"
+    temp_path.mkdir(parents=True, exist_ok=True)
+
+    # Display ICA component topographies and force user interaction
+    print("Displaying ICA Component Topographies...")
+    ica_comps = ica.plot_components(show=True)  # Force display with blocking behavior
+    
+    # Display ICA source time series and force user interaction  
+    print("Displaying ICA Source Time Series...")
+    ica_sources = ica.plot_sources(raw, block=True, theme="dark", show=True)  # Force display with blocking
+
+    comps_path = temp_path / "components.png"
+    source_path = temp_path / "source.png"
+    ica_comps.savefig(comps_path)
+    ica_sources.savefig(source_path)
+
+    ica.find_bads_ecg(raw)
+    ica.find_bads_muscle(raw)
+
+    print(f"Automatic exclusion excluded: {ica.exclude}")
+
+    # Get total number of components
+    n_components = ica.n_components_
+    available_components = list(range(n_components))
+    
+    print(f"\nICA Components for {context.sub_id}")
+    print(f"Inspect plots in directory: {temp_path}")
+    print(f"Available components: {available_components}")
+    print("Enter component numbers to exclude (comma-separated, e.g., '0,3,5'):")
+    
+    while True:
+        try:
+            user_input = input("Components to exclude (or 'done' to continue): ").strip()
+            
+            if user_input.lower() == 'done':
+                break
+            elif user_input == '':
+                continue
+            
+            # Parse component numbers
+            excluded_comps = [int(x.strip()) for x in user_input.split(',')]
+            
+            # Validate component numbers
+            invalid_comps = [comp for comp in excluded_comps if comp not in available_components]
+            if invalid_comps:
+                print(f"Invalid component numbers: {invalid_comps}. Available: {available_components}")
+                continue
+            
+            # Add to existing exclusions
+            ica.exclude = sorted(set(ica.exclude + excluded_comps))
+            print(f"Currently excluded components: {ica.exclude}")
+            
+        except ValueError:
+            print("Please enter valid integers separated by commas (e.g., '0,3,5') or 'done'")
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user")
+            return data
+
+    print(f"{context.sub_id}", "final excluded comps: ", ica.exclude)
+
+    new_ica = ica.copy()
+    new_ica_path = context.output_dir / "ica" / f"{context.sub_id}_clean-ica.fif"
+    new_ica.save(new_ica_path, overwrite=True)
+
+    return data

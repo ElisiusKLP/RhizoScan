@@ -39,3 +39,13 @@ def run_ica_and_save(
     *,
     save: bool = False
 ) -> DataProcStep: ...
+
+def ica_check(
+    crop_min: int = 100,
+    crop_max: int = 300,
+    filter_min: int = 1,
+    filter_max: int = 20,
+    *,
+    save: bool = True, 
+    show: bool = False
+) -> DataProcStep: ...
