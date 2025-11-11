@@ -128,7 +128,6 @@ def apply_zapline_denoising(
     Operates only on magnetometer channels by default for efficiency and safety.
     Defaults to mag_only as gradiometer power noise act differently in frequencies.
 
-
     Args:
         data (Raw): MNE Raw object (must be preloaded).
         fline (float): Power line frequency (e.g., 50.0 or 60.0 Hz).

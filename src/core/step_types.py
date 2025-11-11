@@ -38,7 +38,7 @@ class DataProcStep(Step):
 
             # Use counter for sequential mapping
             counter = self.context.file_counter
-            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.fif"
+            filename = f"{self.context.sub_id}_f{counter:02d}_{self.name}.fif"
             filepath = files_sub_dir / filename
 
             # Check type and save appropriately
@@ -87,7 +87,7 @@ class PlotStep(Step):
             plot_sub_dir.mkdir(parents=True, exist_ok=True)
             # Use counter for sequential naming
             counter = self.context.plot_counter
-            filename = f"{self.context.sub_id}_{counter:02d}_{self.name}.png"
+            filename = f"{self.context.sub_id}_p{counter:02d}_{self.name}.png"
             filepath = plot_sub_dir / filename
             fig.savefig(filepath)
             print(f"Saved plot to {filepath}")
@@ -133,9 +133,6 @@ def data_proc_step(name: str, save: bool = False, active: bool = True):
                         call_kwargs['context'] = self.context  # <-- this is the magic!
                     
                     return self.func(data, *self.func_args, **call_kwargs)
-
-                    # Call the original function with stored arguments + data as first param
-                    return self.func(data, *self.func_args, **self.func_kwargs)
             
             # Return an instance of the step with the current arguments
             return FunctionStep(args, kwargs, save=save, active=active)

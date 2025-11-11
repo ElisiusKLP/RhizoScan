@@ -13,7 +13,7 @@ from src.steps.data_preproc import (
     apply_zapline_denoising,
     run_ica_and_save
 )
-from src.steps.plots import plot_psd
+from src.steps.plots import plot_psd, ica_check
 #logging
 import logging
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:%(name)s:%(message)s")
@@ -34,6 +34,7 @@ def create_effort_pipe():
         name="effort",
         context=context
     )
+    # Steo 0
     pipe.add_step(loadRaw(raw_path))
     """# I wait for the real data
     pipe.add_step(set_channels(ch_dict={
@@ -47,6 +48,7 @@ def create_effort_pipe():
     def pick_channels(data):
         return data.pick(picks=["meg", "stim", "grad", "misc"], exclude=["eeg"])
     pipe.add_step(pick_channels(save=True))
+    # step 1
     @data_proc_step(name="grad_comp", save=False)
     def grad_comp(data):
         return data.apply_gradient_compensation(3)
@@ -67,6 +69,14 @@ def create_effort_pipe():
         filt_low=1,
         filt_high=30,
         save=True))
+    # step 2
+    pipe.add_step(ica_check(
+        crop_min=100,
+        crop_max=300,
+        filter_min=1,
+        filter_max=20
+    ))
+    # step 
 
     return pipe
 
